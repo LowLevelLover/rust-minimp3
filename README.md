@@ -13,3 +13,11 @@ cargo run
 ```bash
 cargo test
 ```
+
+## Features
+
+[ ] Error Protection and CRC
+[ ] Emphasis
+[ ] MPEG-2/2.5
+[ ] Layer 1 and 2
+
