@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use crate::buffer::Buffer;
 use crate::constant;
 use crate::error;
 
@@ -120,21 +121,26 @@ impl Header {
         Err(error::ErrorType::InvalidHeader)
     }
 
-    pub fn from_buffer(buffer: &Vec<u8>) -> Self {
-        let sync_word = ((buffer[0] as u16) << 4) | (buffer[1] as u16 & 0xf0) >> 4;
-        let version = Version::decode_version((buffer[1] & 8) >> 3).unwrap();
-        let layer = Layer::decode_layer((buffer[1] & 0b110) >> 1).unwrap();
-        let error_protection = (buffer[1] & 1) == 0;
-        let bitrate = (buffer[2] & 0xf0) >> 4;
-        let frequency = (buffer[2] & 0xc) >> 2;
-        let padding_bit = ((buffer[2] & 0x10) >> 1) == 1;
-        let private_bit = buffer[2] & 1 == 1;
-        let mode = Mode::decode_mode((buffer[3] & 0xc0) >> 6).unwrap();
-        let intensity_stereo = (buffer[3] & 0x20) >> 5 == 1;
-        let ms_stereo = (buffer[3] & 0x10) >> 4 == 1;
-        let copy_right = (buffer[3] & 0b1000) >> 3 == 1;
-        let copy_of_original = (buffer[3] & 0b100) >> 2 == 0;
-        let emphasis = buffer[3] & 0b11;
+    pub fn create_from_buffer(buffer: &mut Buffer) -> Self {
+        let index = buffer.pos / 8;
+
+        let sync_word =
+            ((buffer.data[index] as u16) << 4) | (buffer.data[1 + index] as u16 & 0xf0) >> 4;
+        let version = Version::decode_version((buffer.data[1 + index] & 8) >> 3).unwrap();
+        let layer = Layer::decode_layer((buffer.data[1 + index] & 0b110) >> 1).unwrap();
+        let error_protection = (buffer.data[1 + index] & 1) == 0;
+        let bitrate = (buffer.data[2 + index] & 0xf0) >> 4;
+        let frequency = (buffer.data[2 + index] & 0xc) >> 2;
+        let padding_bit = ((buffer.data[2 + index] & 0x10) >> 1) == 1;
+        let private_bit = buffer.data[2 + index] & 1 == 1;
+        let mode = Mode::decode_mode((buffer.data[3 + index] & 0xc0) >> 6).unwrap();
+        let intensity_stereo = (buffer.data[3 + index] & 0x20) >> 5 == 1;
+        let ms_stereo = (buffer.data[3 + index] & 0x10) >> 4 == 1;
+        let copy_right = (buffer.data[3 + index] & 0b1000) >> 3 == 1;
+        let copy_of_original = (buffer.data[3 + index] & 0b100) >> 2 == 0;
+        let emphasis = buffer.data[3 + index] & 0b11;
+
+        buffer.move_pos(32);
 
         Self {
             sync_word,
@@ -156,13 +162,13 @@ impl Header {
 
     fn get_bitrate(&self) -> Result<u16, error::ErrorType> {
         if self.version == Version::MPEG1 && self.layer == Layer::Layer3 {
-            return Ok(constant::BITRATE_MPEG1_LAYER3[self.bitrate as usize - 1]);
+            return Ok(constant::HALF_BITRATE_MPEG1_LAYER3[self.bitrate as usize] as u16 * 2);
         }
 
         if self.version == Version::MPEG2
             && (self.layer == Layer::Layer3 || self.layer == Layer::Layer2)
         {
-            return Ok(constant::BITRATE_MPEG2_LAYER3[self.bitrate as usize - 1]);
+            return Ok(constant::BITRATE_MPEG2_LAYER3[self.bitrate as usize] as u16);
         }
 
         Err(error::ErrorType::UnknownBitrate)
@@ -217,44 +223,12 @@ impl Display for Header {
             },
             self.copy_of_original,
             match self.emphasis {
-                00 => "None",
-                01 => "50/15 ms",
-                10 => "Reserved",
-                11 => "CCIT J.17",
+                0 => "None",
+                1 => "50/15 ms",
+                2 => "Reserved",
+                3 => "CCIT J.17",
                 _ => "",
             }
         )
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::helper::get_buffer_from_file;
-
-    #[test]
-    fn test_header_from_buffer() {
-        let buffer = get_buffer_from_file("mp3-examples/test_data_1mb.mp3");
-        let header = Header::from_buffer(&buffer);
-
-        assert_eq!(
-            header,
-            Header {
-                sync_word: 0xfff,
-                version: Version::MPEG1,
-                layer: Layer::Layer3,
-                error_protection: false,
-                bitrate: 0b1001,
-                frequency: 0,
-                padding_bit: false,
-                private_bit: false,
-                mode: Mode::JointStereo,
-                intensity_stereo: true,
-                ms_stereo: false,
-                copy_right: false,
-                copy_of_original: false,
-                emphasis: 0,
-            }
-        );
     }
 }

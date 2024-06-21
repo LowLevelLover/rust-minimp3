@@ -20,4 +20,6 @@ cargo test
 [ ] Emphasis
 [ ] MPEG-2/2.5
 [ ] Layer 1 and 2
+[ ] VBRI Header
+[ ] XING Header
 
