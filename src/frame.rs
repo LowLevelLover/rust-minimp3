@@ -3,7 +3,7 @@ use crate::{buffer::Buffer, side_info::SideInfo, Header};
 #[derive(Debug)]
 pub struct Frame {
     pub header: Header,
-    pub crc: Option<u16>,
+    crc: Option<u16>,
     pub side_info: SideInfo,
     length_byte: usize,
 }
@@ -17,9 +17,10 @@ impl Frame {
             None
         };
 
-        let side_info = SideInfo::create_from_buffer(buffer, &header.mode);
-        let length_byte =
-            144000 * (header.bitrate / header.frequency) as usize + header.padding_bit as usize;
+        let side_info = SideInfo::create_from_buffer(buffer, &header.mode).unwrap();
+        let length_byte = 144000
+            * (header.get_bitrate().unwrap() / header.get_frequency().unwrap()) as usize
+            + header.padding_bit as usize;
 
         Self {
             header,

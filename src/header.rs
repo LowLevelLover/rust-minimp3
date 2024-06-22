@@ -41,6 +41,7 @@ pub struct Header {
     pub copy_right: bool,
     pub copy_of_original: bool,
     pub emphasis: u8,
+    pub pos: usize,
 }
 
 impl Display for Layer {
@@ -122,6 +123,7 @@ impl Header {
     }
 
     pub fn create_from_buffer(buffer: &mut Buffer) -> Self {
+        let pos = buffer.pos;
         let index = buffer.pos / 8;
 
         let sync_word =
@@ -157,30 +159,21 @@ impl Header {
             copy_right,
             copy_of_original,
             emphasis,
+            pos,
         }
     }
 
-    fn get_bitrate(&self) -> Result<u16, error::ErrorType> {
+    pub fn get_bitrate(&self) -> Result<u16, error::ErrorType> {
         if self.version == Version::MPEG1 && self.layer == Layer::Layer3 {
             return Ok(constant::HALF_BITRATE_MPEG1_LAYER3[self.bitrate as usize] as u16 * 2);
-        }
-
-        if self.version == Version::MPEG2
-            && (self.layer == Layer::Layer3 || self.layer == Layer::Layer2)
-        {
-            return Ok(constant::BITRATE_MPEG2_LAYER3[self.bitrate as usize] as u16);
         }
 
         Err(error::ErrorType::UnknownBitrate)
     }
 
-    fn get_frequency(&self) -> Result<u16, error::ErrorType> {
+    pub fn get_frequency(&self) -> Result<u16, error::ErrorType> {
         if self.version == Version::MPEG1 {
             return Ok(constant::FREQUENCY_MPEG1[self.frequency as usize]);
-        }
-
-        if self.version == Version::MPEG2 {
-            return Ok(constant::FREQUENCY_MPEG2[self.frequency as usize]);
         }
 
         Err(error::ErrorType::UnknownFrequency)
@@ -205,6 +198,7 @@ impl Display for Header {
     Copy Right: {},
     Copy of Original: {},
     emphasis: {},
+    pos: from {}
             ",
             self.version,
             self.layer,
@@ -228,7 +222,8 @@ impl Display for Header {
                 2 => "Reserved",
                 3 => "CCIT J.17",
                 _ => "",
-            }
+            },
+            self.pos,
         )
     }
 }

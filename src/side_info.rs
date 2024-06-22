@@ -1,102 +1,117 @@
-use crate::{buffer::Buffer, header::Mode};
-
-pub const SUBTOTAL_GRANULE_MONO: u8 = 59;
-pub const TOTAL_NUMBER_BITS_MONO: u8 = 136;
-pub const SUBTOTAL_NOT_NORMAL_BLOCKS_MONO: u8 = 136;
-
-const MAIN_DATA_BEGIN_BITS: u32 = 9;
-const PRIVATE_BITS_MONO: u32 = 5;
-const PRIVATE_BITS_DUAL: u32 = 3;
-
-// [scfsi, part2_3_length, big_values, global_gain, scalefac_compress, windows_switching, block_type, mixed_block_flag, table_select, subblock_gain, region0_count, region1_count, preflag, scalefac_scale, count1_table_select]
-
-const MONO_BITS: [u32; 15] = [4, 12, 9, 8, 4, 1, 2, 1, 5, 9, 4, 3, 1, 1, 1];
+use crate::{buffer::Buffer, error::ErrorType, header::Mode};
 
 #[derive(Debug)]
 pub struct SideInfo {
     pub main_data_begin: u16,
     pub private_bits: u8,
     pub scfsi: u8,
-    pub part2_3_length: u32,
-    pub big_values: u32,
-    pub global_gain: u16,
+    pub granule_channels: Vec<GranuleInfo>,
+}
+
+#[derive(Debug)]
+pub struct GranuleInfo {
+    pub part_23_length: u16,
+    pub big_values: u16,
+    pub global_gain: u8,
     pub scalefac_compress: u8,
-    pub windows_switching: u8,
+    pub windows_switching: bool,
     pub block_type: u8,
-    pub mixed_block_flag: u8,
-    pub table_select: u32,
-    pub subblock_gain: u32,
-    pub region0_count: u8,
-    pub region1_count: u8,
-    pub preflag: u8,
-    pub scalefac_scale: u8,
-    pub count1_table_select: u8,
+    pub mixed_block_flag: bool,
+    pub table_select: [u8; 3],
+    pub subblock_gain: [u8; 3],
+    pub region_count: [u8; 3],
+    pub preflag: bool,
+    pub scalefac_scale: bool,
+    pub count1_table_select: bool,
+}
+
+impl GranuleInfo {
+    fn new() -> Self {
+        Self {
+            part_23_length: 0,
+            big_values: 0,
+            global_gain: 0,
+            scalefac_compress: 0,
+            windows_switching: false,
+            block_type: 0,
+            mixed_block_flag: false,
+            table_select: [0, 0, 0],
+            subblock_gain: [0, 0, 0],
+            region_count: [0, 0, 0],
+            preflag: false,
+            scalefac_scale: false,
+            count1_table_select: false,
+        }
+    }
 }
 
 impl SideInfo {
-    pub fn create_from_buffer(buffer: &mut Buffer, mode: &Mode) -> Self {
-        let bits = if *mode == Mode::SingleChannel {
-            MONO_BITS
-        } else {
-            MONO_BITS.map(|el| el * 2)
-        };
+    pub fn create_from_buffer(buffer: &mut Buffer, mode: &Mode) -> Result<Self, ErrorType> {
+        let is_mono = *mode == Mode::SingleChannel;
 
         let main_data_begin = buffer.get_bits(9).unwrap() as u16;
-        let private_bits: u8 = buffer
-            .get_bits(if *mode == Mode::SingleChannel { 5 } else { 3 })
-            .unwrap() as u8;
+        let private_bits: u8 = buffer.get_bits(if is_mono { 5 } else { 3 }).unwrap() as u8;
+        let scfsi = buffer.get_bits(if is_mono { 4 } else { 8 }).unwrap() as u8;
 
-        let scfsi = buffer.get_bits(bits[0]).unwrap() as u8;
-        let part2_3_length = buffer.get_bits(bits[1]).unwrap();
-        let big_values = buffer.get_bits(bits[2]).unwrap();
-        let global_gain = buffer.get_bits(bits[3]).unwrap() as u16;
-        let scalefac_compress = buffer.get_bits(bits[4]).unwrap() as u8;
-        let windows_switching = buffer.get_bits(bits[5]).unwrap() as u8;
-        let block_type = if windows_switching != 0 {
-            buffer.get_bits(bits[6]).unwrap() as u8
-        } else {
-            buffer.move_pos(bits[6] as isize);
-            0
-        };
-        let mixed_block_flag = if windows_switching != 0 {
-            buffer.get_bits(bits[7]).unwrap() as u8
-        } else {
-            buffer.move_pos(bits[7] as isize);
-            0
-        };
-        let table_select = buffer
-            .get_bits(bits[8] * if windows_switching != 0 { 3 } else { 2 })
-            .unwrap();
-        let subblock_gain = if windows_switching != 0 {
-            buffer.get_bits(bits[9]).unwrap()
-        } else {
-            buffer.move_pos(bits[9] as isize);
-            0
-        };
-        let region0_count = buffer.get_bits(bits[10]).unwrap() as u8;
-        let region1_count = buffer.get_bits(bits[11]).unwrap() as u8;
-        let preflag = buffer.get_bits(bits[12]).unwrap() as u8;
-        let scalefac_scale = buffer.get_bits(bits[13]).unwrap() as u8;
-        let count1_table_select = buffer.get_bits(bits[14]).unwrap() as u8;
+        let granules_count: u8 = if is_mono { 2 } else { 4 };
+        let mut granules: Vec<GranuleInfo> = Vec::new();
+        let mut part_23_sum: usize = 0;
 
-        SideInfo {
+        for _ in 0..granules_count {
+            let mut granule = GranuleInfo::new();
+
+            granule.part_23_length = buffer.get_bits(12).unwrap() as u16;
+            part_23_sum += granule.part_23_length as usize;
+
+            granule.big_values = buffer.get_bits(9).unwrap() as u16;
+
+            if granule.big_values > 288 {
+                return Err(ErrorType::BigValuesOutOfRange);
+            }
+
+            granule.global_gain = buffer.get_bits(8).unwrap() as u8;
+            granule.scalefac_compress = buffer.get_bits(4).unwrap() as u8;
+            granule.windows_switching = buffer.get_bits(1).unwrap() == 1;
+
+            if granule.windows_switching {
+                granule.block_type = buffer.get_bits(2).unwrap() as u8;
+                if granule.block_type == 0 {
+                    return Err(ErrorType::BlockTypeForbidden);
+                }
+
+                granule.mixed_block_flag = buffer.get_bits(1).unwrap() == 1;
+                granule.table_select[0] = buffer.get_bits(5).unwrap() as u8;
+                granule.table_select[1] = buffer.get_bits(5).unwrap() as u8;
+
+                granule.subblock_gain[0] = buffer.get_bits(3).unwrap() as u8;
+                granule.subblock_gain[1] = buffer.get_bits(3).unwrap() as u8;
+                granule.subblock_gain[2] = buffer.get_bits(3).unwrap() as u8;
+            } else {
+                granule.table_select[0] = buffer.get_bits(5).unwrap() as u8;
+                granule.table_select[1] = buffer.get_bits(5).unwrap() as u8;
+                granule.table_select[2] = buffer.get_bits(5).unwrap() as u8;
+
+                granule.region_count[0] = buffer.get_bits(4).unwrap() as u8;
+                granule.region_count[1] = buffer.get_bits(3).unwrap() as u8;
+                granule.region_count[2] = 255;
+            }
+
+            granule.preflag = buffer.get_bits(1).unwrap() == 1;
+            granule.scalefac_scale = buffer.get_bits(1).unwrap() == 1;
+            granule.count1_table_select = buffer.get_bits(1).unwrap() == 1;
+
+            granules.push(granule);
+        }
+
+        if part_23_sum + buffer.pos > buffer.total_bits + main_data_begin as usize * 8 {
+            return Err(ErrorType::Overflow);
+        }
+
+        Ok(SideInfo {
             main_data_begin,
             private_bits,
             scfsi,
-            part2_3_length,
-            big_values,
-            global_gain,
-            scalefac_compress,
-            windows_switching,
-            block_type,
-            mixed_block_flag,
-            table_select,
-            subblock_gain,
-            region0_count,
-            region1_count,
-            preflag,
-            scalefac_scale,
-            count1_table_select,
-        }
+            granule_channels: granules,
+        })
     }
 }

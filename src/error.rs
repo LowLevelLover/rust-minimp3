@@ -8,4 +8,6 @@ pub enum ErrorType {
     UnknownBitrate,
     UnknownFrequency,
     UnknownMode,
+    BigValuesOutOfRange,
+    BlockTypeForbidden,
 }

@@ -102,6 +102,7 @@ mod test {
                 copy_right: false,
                 copy_of_original: false,
                 emphasis: 0,
+                pos: 0
             }
         );
     }
