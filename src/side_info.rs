@@ -80,25 +80,28 @@ impl SideInfo {
                 }
 
                 granule.mixed_block_flag = buffer.get_bits(1).unwrap() == 1;
-                granule.table_select[0] = buffer.get_bits(5).unwrap() as u8;
-                granule.table_select[1] = buffer.get_bits(5).unwrap() as u8;
 
-                granule.subblock_gain[0] = buffer.get_bits(3).unwrap() as u8;
-                granule.subblock_gain[1] = buffer.get_bits(3).unwrap() as u8;
-                granule.subblock_gain[2] = buffer.get_bits(3).unwrap() as u8;
+                for i in 0..2 {
+                    granule.table_select[i] = buffer.get_bits(5).unwrap() as u8;
+                }
+
+                for i in 0..3 {
+                    granule.subblock_gain[i] = buffer.get_bits(3).unwrap() as u8;
+                }
             } else {
-                granule.table_select[0] = buffer.get_bits(5).unwrap() as u8;
-                granule.table_select[1] = buffer.get_bits(5).unwrap() as u8;
-                granule.table_select[2] = buffer.get_bits(5).unwrap() as u8;
+                for i in 0..3 {
+                    granule.table_select[i] = buffer.get_bits(5).unwrap() as u8;
+                }
 
                 granule.region_count[0] = buffer.get_bits(4).unwrap() as u8;
                 granule.region_count[1] = buffer.get_bits(3).unwrap() as u8;
                 granule.region_count[2] = 255;
             }
 
-            granule.preflag = buffer.get_bits(1).unwrap() == 1;
-            granule.scalefac_scale = buffer.get_bits(1).unwrap() == 1;
-            granule.count1_table_select = buffer.get_bits(1).unwrap() == 1;
+            let bits = buffer.get_bits(3).unwrap() as u8;
+            granule.preflag = (bits & 4) == 1;
+            granule.scalefac_scale = (bits & 2) == 1;
+            granule.count1_table_select = (bits & 1) == 1;
 
             granules.push(granule);
         }
