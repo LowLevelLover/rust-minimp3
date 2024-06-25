@@ -99,9 +99,9 @@ impl SideInfo {
             }
 
             let bits = buffer.get_bits(3).unwrap() as u8;
-            granule.preflag = (bits & 4) == 1;
-            granule.scalefac_scale = (bits & 2) == 1;
-            granule.count1_table_select = (bits & 1) == 1;
+            granule.preflag = bits & 4 == 4;
+            granule.scalefac_scale = bits & 2 == 2;
+            granule.count1_table_select = bits & 1 == 1;
 
             granules.push(granule);
         }
